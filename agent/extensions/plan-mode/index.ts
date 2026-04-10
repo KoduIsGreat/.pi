@@ -40,7 +40,7 @@ const FULL_TOOLS = ["read", "bash", "edit", "write"];
 
 // Phase transitions
 const PHASE_ORDER: PlanPhase[] = ["brainstorm", "spec", "plan", "execute"];
-const READONLY_PHASES: PlanPhase[] = ["brainstorm", "plan"];
+const READONLY_PHASES: PlanPhase[] = ["brainstorm"];
 
 // Transition signals the agent includes in its response
 const TRANSITION_SIGNALS: Record<string, PlanPhase> = {
@@ -77,7 +77,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	function applyToolsForPhase(): void {
 		if (phase === "off" || phase === "execute") {
 			pi.setActiveTools(FULL_TOOLS);
-		} else if (phase === "spec") {
+		} else if (phase === "spec" || phase === "plan") {
 			pi.setActiveTools(SPEC_TOOLS);
 		} else {
 			pi.setActiveTools(READONLY_TOOLS);

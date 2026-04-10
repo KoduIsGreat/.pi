@@ -115,14 +115,18 @@ After writing the plan, check:
 2. **Placeholder scan** — any vague steps?
 3. **Consistency** — do type names / function names match across tasks?
 
-## Restrictions
+## Tools Available
 
-- Tools: read, bash (read-only), grep, find, ls
-- You CANNOT use: edit, write
+- read, bash (read-only), grep, find, ls
+- **write** — use this to save the plan to disk (e.g. docs/plans/<topic>-plan.md)
+- You CANNOT use: edit
 
-Present the plan under a "Plan:" header, then ask: "Ready to execute this plan?"
+## Process
 
-When the user approves, say: "Plan approved. Ready to execute."`;
+1. Present the complete plan in chat under a "Plan:" header for the user to review
+2. Ask: "Ready to execute this plan?"
+3. After user approves, save the plan to a file using the write tool
+4. Then say: "Plan approved. Ready to execute."`;
 
 export function getExecutionPrompt(todoItems: { step: number; text: string; completed: boolean }[]): string {
 	const total = todoItems.length;
