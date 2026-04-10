@@ -35,11 +35,12 @@ import {
 
 // Tools
 const READONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire"];
+const SPEC_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", "write"];
 const FULL_TOOLS = ["read", "bash", "edit", "write"];
 
 // Phase transitions
 const PHASE_ORDER: PlanPhase[] = ["brainstorm", "spec", "plan", "execute"];
-const READONLY_PHASES: PlanPhase[] = ["brainstorm", "spec", "plan"];
+const READONLY_PHASES: PlanPhase[] = ["brainstorm", "plan"];
 
 // Transition signals the agent includes in its response
 const TRANSITION_SIGNALS: Record<string, PlanPhase> = {
@@ -74,10 +75,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	// --- UI Helpers ---
 
 	function applyToolsForPhase(): void {
-		if (phase === "off") {
+		if (phase === "off" || phase === "execute") {
 			pi.setActiveTools(FULL_TOOLS);
-		} else if (phase === "execute") {
-			pi.setActiveTools(FULL_TOOLS);
+		} else if (phase === "spec") {
+			pi.setActiveTools(SPEC_TOOLS);
 		} else {
 			pi.setActiveTools(READONLY_TOOLS);
 		}
@@ -323,13 +324,18 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 		}
 
-		// Build menu options based on current phase
+		// Only show the transition menu when the agent signals readiness.
+		// During brainstorm, the agent asks questions back-and-forth — don't
+		// interrupt with a menu on every turn. The user can always use /phase
+		// or /plan off to change things manually.
+		if (!detectedNextPhase) return;
+
 		const phaseIdx = PHASE_ORDER.indexOf(phase);
 		const nextPhase = phaseIdx < PHASE_ORDER.length - 1 ? PHASE_ORDER[phaseIdx + 1] : null;
 
 		const options: string[] = [];
 
-		if (detectedNextPhase && nextPhase === detectedNextPhase) {
+		if (nextPhase && detectedNextPhase === nextPhase) {
 			options.push(`→ Move to ${PHASE_LABELS[detectedNextPhase]} phase`);
 		} else if (nextPhase) {
 			options.push(`→ Move to ${PHASE_LABELS[nextPhase]} phase`);
@@ -366,11 +372,9 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				setPhase("execute", ctx);
 				persistState();
 
-				const execMessage = todoItems.length > 0
-					? `Execute the approved plan. Start with step 1: ${todoItems[0].text}`
-					: "Execute the approved plan.";
+				// Don't include the truncated step text — just tell it to follow the plan
 				pi.sendMessage(
-					{ customType: "plan-mode-execute", content: execMessage, display: true },
+					{ customType: "plan-mode-execute", content: "Execute the approved implementation plan. Start from step 1 and work through each step in order.", display: true },
 					{ triggerTurn: true },
 				);
 				return;

@@ -67,14 +67,18 @@ After writing, check:
 
 Fix issues inline, then present the spec for user review.
 
-## Restrictions
+## Tools Available
 
-- Tools: read, bash (read-only), grep, find, ls, questionnaire
-- You CANNOT use: edit, write (the spec is presented in chat for review, not written to disk yet)
+- read, bash (read-only), grep, find, ls, questionnaire
+- **write** — use this to save the spec document to disk (e.g. docs/specs/<topic>-design.md)
+- You CANNOT use: edit
 
-Present the complete spec, then ask: "Does this spec look right? Any changes before we move to the implementation plan?"
+## Process
 
-When the user approves, say: "Spec approved. Ready to write the implementation plan."`;
+1. First present the complete spec in chat for the user to review
+2. Ask: "Does this spec look right? Any changes before we move to the implementation plan?"
+3. After user approves, save the spec to a file using the write tool
+4. Then say: "Spec approved. Ready to write the implementation plan."`;
 
 export const PLAN_PROMPT = `[PLAN PHASE - Writing the implementation plan]
 You have an approved spec. Now write a detailed, step-by-step implementation plan that a developer could follow without any other context.
@@ -121,17 +125,22 @@ Present the plan under a "Plan:" header, then ask: "Ready to execute this plan?"
 When the user approves, say: "Plan approved. Ready to execute."`;
 
 export function getExecutionPrompt(todoItems: { step: number; text: string; completed: boolean }[]): string {
+	const total = todoItems.length;
+	const completed = todoItems.filter((t) => t.completed).length;
 	const remaining = todoItems.filter((t) => !t.completed);
-	const todoList = remaining.map((t) => `${t.step}. ${t.text}`).join("\n");
+	const nextStep = remaining.length > 0 ? remaining[0].step : null;
 
 	return `[EXECUTION PHASE - Full tool access enabled]
 
-You are executing an approved implementation plan. Full tool access is restored.
+You are executing the approved implementation plan from the conversation above. Full tool access is restored.
 
-Remaining steps:
-${todoList}
+Progress: ${completed}/${total} steps completed.${nextStep ? ` Continue from step ${nextStep}.` : ""}
 
-Execute each step in order. After completing a step, include a [DONE:n] tag in your response (e.g. [DONE:1]).
+## Rules
 
-If you hit a blocker or something doesn't match the plan, STOP and ask rather than guessing.`;
+- Refer to the implementation plan in the conversation above for the full details of each step.
+- Execute steps in order. Do NOT skip steps.
+- After completing each step, include a [DONE:n] tag (e.g. [DONE:1], [DONE:2]).
+- If you hit a blocker or something doesn't match the plan, STOP and ask — do not guess.
+- Each [DONE:n] should appear only once per step completion.`;
 }

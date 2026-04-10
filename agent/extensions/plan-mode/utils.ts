@@ -136,18 +136,15 @@ export function cleanStepText(text: string): string {
 	let cleaned = text
 		.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1") // Remove bold/italic
 		.replace(/`([^`]+)`/g, "$1") // Remove code
-		.replace(
-			/^(Use|Run|Execute|Create|Write|Read|Check|Verify|Update|Modify|Add|Remove|Delete|Install)\s+(the\s+)?/i,
-			"",
-		)
 		.replace(/\s+/g, " ")
 		.trim();
 
 	if (cleaned.length > 0) {
 		cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 	}
-	if (cleaned.length > 50) {
-		cleaned = `${cleaned.slice(0, 47)}...`;
+	// Keep enough text for meaningful display but cap for the widget
+	if (cleaned.length > 120) {
+		cleaned = `${cleaned.slice(0, 117)}...`;
 	}
 	return cleaned;
 }
@@ -160,20 +157,39 @@ export function extractTodoItems(message: string): TodoItem[] {
 	if (!headerMatch) return items;
 
 	const planSection = message.slice(message.indexOf(headerMatch[0]) + headerMatch[0].length);
-	const numberedPattern = /^\s*(\d+)[.)]\s+\*{0,2}([^*\n]+)/gm;
+
+	// Only match TOP-LEVEL numbered steps:
+	//  - Must start at beginning of line (no leading whitespace)
+	//  - Number followed by . or ) (no letter suffixes like "1e.")
+	//  - Must have meaningful text after the number
+	// This avoids matching indented sub-steps, lettered sub-items, or
+	// code/conditions that happen to start with numbers.
+	const numberedPattern = /^(\d+)[.)]\s+\*{0,2}([^*\n]+)/gm;
 
 	for (const match of planSection.matchAll(numberedPattern)) {
+		const stepNum = Number(match[1]);
 		const text = match[2]
 			.trim()
 			.replace(/\*{1,2}$/, "")
 			.trim();
-		if (text.length > 5 && !text.startsWith("`") && !text.startsWith("/") && !text.startsWith("-")) {
-			const cleaned = cleanStepText(text);
-			if (cleaned.length > 3) {
-				items.push({ step: items.length + 1, text: cleaned, completed: false });
-			}
+
+		// Skip non-step content: too short, code fragments, sub-bullets
+		if (text.length < 8) continue;
+		if (text.startsWith("`") || text.startsWith("/") || text.startsWith("-")) continue;
+		// Skip lines that look like conditions/code (e.g. "If merged == c.Metrics")
+		if (/^(if|else|for|while|switch|case|return|var|let|const|func|def|class)\b/i.test(text)) continue;
+
+		const cleaned = cleanStepText(text);
+		if (cleaned.length > 5) {
+			items.push({ step: stepNum, text: cleaned, completed: false });
 		}
 	}
+
+	// Re-number sequentially in case plan uses non-sequential numbers
+	for (let i = 0; i < items.length; i++) {
+		items[i].step = i + 1;
+	}
+
 	return items;
 }
 
