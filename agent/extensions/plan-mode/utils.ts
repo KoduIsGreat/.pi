@@ -106,6 +106,32 @@ export interface TodoItem {
 	completed: boolean;
 }
 
+/**
+ * Phases of the plan workflow:
+ * - brainstorm: Back-and-forth exploration, one question at a time (read-only)
+ * - spec: Write a design/spec document from the brainstorm (read-only, writes spec)
+ * - plan: Write a detailed implementation plan from the spec (read-only, writes plan)
+ * - execute: Implement the plan with progress tracking (full access)
+ * - off: Plan mode disabled
+ */
+export type PlanPhase = "off" | "brainstorm" | "spec" | "plan" | "execute";
+
+export const PHASE_LABELS: Record<PlanPhase, string> = {
+	off: "",
+	brainstorm: "💬 brainstorm",
+	spec: "📐 spec",
+	plan: "📋 plan",
+	execute: "🚀 execute",
+};
+
+export const PHASE_ICONS: Record<PlanPhase, string> = {
+	off: "",
+	brainstorm: "💬",
+	spec: "📐",
+	plan: "📋",
+	execute: "🚀",
+};
+
 export function cleanStepText(text: string): string {
 	let cleaned = text
 		.replace(/\*{1,2}([^*]+)\*{1,2}/g, "$1") // Remove bold/italic
@@ -128,7 +154,9 @@ export function cleanStepText(text: string): string {
 
 export function extractTodoItems(message: string): TodoItem[] {
 	const items: TodoItem[] = [];
-	const headerMatch = message.match(/\*{0,2}Plan:\*{0,2}\s*\n/i);
+	// Look for a plan header - support multiple formats
+	const headerMatch = message.match(/\*{0,2}(?:Implementation\s+)?Plan:\*{0,2}\s*\n/i)
+		|| message.match(/^#{1,3}\s+(?:Implementation\s+)?Plan\s*$/im);
 	if (!headerMatch) return items;
 
 	const planSection = message.slice(message.indexOf(headerMatch[0]) + headerMatch[0].length);

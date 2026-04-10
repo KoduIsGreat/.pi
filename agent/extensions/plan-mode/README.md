@@ -1,65 +1,93 @@
-# Plan Mode Extension
+# Plan Mode Extension — Phased Workflow
 
-Read-only exploration mode for safe code analysis.
+A structured workflow that guides through brainstorming, spec writing, implementation planning, and execution — inspired by [superpowers](https://github.com/obra/superpowers).
 
-## Features
+## Philosophy
 
-- **Read-only tools**: Restricts available tools to read, bash, grep, find, ls, question
-- **Bash allowlist**: Only read-only bash commands are allowed
-- **Plan extraction**: Extracts numbered steps from `Plan:` sections
-- **Progress tracking**: Widget shows completion status during execution
-- **[DONE:n] markers**: Explicit step completion tracking
-- **Session persistence**: State survives session resume
+Instead of jumping straight from idea to implementation, this extension enforces a deliberate process:
+
+1. **Brainstorm** — Back-and-forth exploration with the agent asking one question at a time
+2. **Spec** — Write a design document capturing what was decided
+3. **Plan** — Write a detailed, step-by-step implementation plan
+4. **Execute** — Implement with progress tracking
+
+Each phase is read-only (except execute), preventing premature code changes. The agent naturally signals when it's ready to transition, and you confirm via a menu.
 
 ## Commands
 
-- `/plan` - Toggle plan mode
-- `/todos` - Show current plan progress
-- `Ctrl+Alt+P` - Toggle plan mode (shortcut)
+| Command | Description |
+|---------|-------------|
+| `/plan` | Start plan mode (brainstorm phase) or toggle off |
+| `/plan off` | Disable plan mode |
+| `/phase` | Show current phase |
+| `/phase <name>` | Jump to a specific phase (brainstorm, spec, plan, execute) |
+| `/todos` | Show execution progress |
+| `Ctrl+Alt+P` | Toggle plan mode on/off |
 
-## Usage
+## Workflow
 
-1. Enable plan mode with `/plan` or `--plan` flag
-2. Ask the agent to analyze code and create a plan
-3. The agent should output a numbered plan under a `Plan:` header:
+### 1. Brainstorm Phase 💬
 
 ```
-Plan:
-1. First step description
-2. Second step description
-3. Third step description
+/plan
+> "I want to add caching to the API layer"
 ```
 
-4. Choose "Execute the plan" when prompted
-5. During execution, the agent marks steps complete with `[DONE:n]` tags
-6. Progress widget shows completion status
+The agent will:
+- Explore project context (files, docs, git history)
+- Ask clarifying questions **one at a time** (prefers multiple choice)
+- Propose 2-3 approaches with trade-offs and a recommendation
+- Validate design decisions incrementally
 
-## How It Works
+When the design is clear, the agent says "Ready to write the spec" → you get a menu to advance.
 
-### Plan Mode (Read-Only)
-- Only read-only tools available
-- Bash commands filtered through allowlist
-- Agent creates a plan without making changes
+### 2. Spec Phase 📐
 
-### Execution Mode
-- Full tool access restored
-- Agent executes steps in order
-- `[DONE:n]` markers track completion
-- Widget shows progress
+The agent writes a design document covering:
+- Goal, background, design, interfaces
+- Error handling, testing strategy
+- What's explicitly out of scope
+- Self-reviews for placeholders, contradictions, ambiguity
 
-### Command Allowlist
+You review and request changes until satisfied → agent says "Spec approved" → advance.
 
-Safe commands (allowed):
-- File inspection: `cat`, `head`, `tail`, `less`, `more`
-- Search: `grep`, `find`, `rg`, `fd`
-- Directory: `ls`, `pwd`, `tree`
-- Git read: `git status`, `git log`, `git diff`, `git branch`
-- Package info: `npm list`, `npm outdated`, `yarn info`
-- System info: `uname`, `whoami`, `date`, `uptime`
+### 3. Plan Phase 📋
 
-Blocked commands:
-- File modification: `rm`, `mv`, `cp`, `mkdir`, `touch`
-- Git write: `git add`, `git commit`, `git push`
-- Package install: `npm install`, `yarn add`, `pip install`
-- System: `sudo`, `kill`, `reboot`
-- Editors: `vim`, `nano`, `code`
+The agent writes a concrete implementation plan:
+- Exact file paths for every change
+- Bite-sized steps (2-5 minutes each)
+- Test-first where appropriate
+- No placeholders or vague steps
+
+You review → agent says "Ready to execute" → advance.
+
+### 4. Execute Phase 🚀
+
+Full tool access restored. The agent:
+- Executes steps in order
+- Marks completion with `[DONE:n]` tags
+- Progress widget tracks completion
+- Stops and asks if blocked (doesn't guess)
+
+## Phase Transitions
+
+Transitions happen naturally:
+1. Agent includes a signal phrase (e.g., "Ready to write the spec")
+2. A menu appears with options:
+   - **→ Move to next phase** — advance the workflow
+   - **↺ Continue** — stay and keep discussing
+   - **✎ Refine** — open editor to give feedback
+   - **✗ Exit** — leave plan mode entirely
+
+You can also jump phases manually with `/phase <name>`.
+
+## Read-Only Protection
+
+During brainstorm, spec, and plan phases:
+- Only read-only tools available (read, bash, grep, find, ls, questionnaire)
+- Bash commands filtered through an allowlist
+- Edit and write tools are disabled
+
+## Session Persistence
+
+Phase and todo state persists across session resume.

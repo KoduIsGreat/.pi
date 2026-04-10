@@ -1,33 +1,59 @@
 /**
- * Plan Mode Extension
+ * Plan Mode Extension — Phased Workflow
  *
- * Read-only exploration mode for safe code analysis.
- * When enabled, only read-only tools are available.
+ * A structured workflow inspired by superpowers that guides through:
+ *   1. Brainstorm — back-and-forth exploration, one question at a time
+ *   2. Spec — write a design document from the brainstorm
+ *   3. Plan — write a detailed implementation plan from the spec
+ *   4. Execute — implement with progress tracking
  *
  * Features:
- * - /plan command or Ctrl+Alt+P to toggle
- * - Bash restricted to allowlisted read-only commands
- * - Extracts numbered plan steps from "Plan:" sections
- * - [DONE:n] markers to complete steps during execution
- * - Progress tracking widget during execution
+ * - /plan to start (enters brainstorm phase)
+ * - /plan off to disable
+ * - /phase to see/change current phase
+ * - /todos to see progress during execution
+ * - Ctrl+Alt+P shortcut to toggle
+ * - Bash restricted to read-only in brainstorm/spec/plan phases
+ * - [DONE:n] markers for step completion during execution
+ * - Progress tracking widget
  */
 
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
-import { extractTodoItems, isSafeCommand, markCompletedSteps, type TodoItem } from "./utils.js";
+import { BRAINSTORM_PROMPT, getExecutionPrompt, PLAN_PROMPT, SPEC_PROMPT } from "./prompts.js";
+import {
+	extractTodoItems,
+	isSafeCommand,
+	markCompletedSteps,
+	PHASE_ICONS,
+	PHASE_LABELS,
+	type PlanPhase,
+	type TodoItem,
+} from "./utils.js";
 
 // Tools
-const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire"];
-const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
+const READONLY_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire"];
+const FULL_TOOLS = ["read", "bash", "edit", "write"];
 
-// Type guard for assistant messages
+// Phase transitions
+const PHASE_ORDER: PlanPhase[] = ["brainstorm", "spec", "plan", "execute"];
+const READONLY_PHASES: PlanPhase[] = ["brainstorm", "spec", "plan"];
+
+// Transition signals the agent includes in its response
+const TRANSITION_SIGNALS: Record<string, PlanPhase> = {
+	"ready to write the spec": "spec",
+	"spec approved. ready to write the implementation plan": "plan",
+	"ready to write the implementation plan": "plan",
+	"plan approved. ready to execute": "execute",
+	"ready to execute": "execute",
+};
+
 function isAssistantMessage(m: AgentMessage): m is AssistantMessage {
 	return m.role === "assistant" && Array.isArray(m.content);
 }
 
-// Extract text content from an assistant message
 function getTextContent(message: AssistantMessage): string {
 	return message.content
 		.filter((block): block is TextContent => block.type === "text")
@@ -36,29 +62,39 @@ function getTextContent(message: AssistantMessage): string {
 }
 
 export default function planModeExtension(pi: ExtensionAPI): void {
-	let planModeEnabled = false;
-	let executionMode = false;
+	let phase: PlanPhase = "off";
 	let todoItems: TodoItem[] = [];
 
 	pi.registerFlag("plan", {
-		description: "Start in plan mode (read-only exploration)",
+		description: "Start in plan mode (brainstorm phase)",
 		type: "boolean",
 		default: false,
 	});
 
+	// --- UI Helpers ---
+
+	function applyToolsForPhase(): void {
+		if (phase === "off") {
+			pi.setActiveTools(FULL_TOOLS);
+		} else if (phase === "execute") {
+			pi.setActiveTools(FULL_TOOLS);
+		} else {
+			pi.setActiveTools(READONLY_TOOLS);
+		}
+	}
+
 	function updateStatus(ctx: ExtensionContext): void {
-		// Footer status
-		if (executionMode && todoItems.length > 0) {
+		if (phase === "execute" && todoItems.length > 0) {
 			const completed = todoItems.filter((t) => t.completed).length;
-			ctx.ui.setStatus("plan-mode", ctx.ui.theme.fg("accent", `📋 ${completed}/${todoItems.length}`));
-		} else if (planModeEnabled) {
-			ctx.ui.setStatus("plan-mode", ctx.ui.theme.fg("warning", "⏸ plan"));
+			ctx.ui.setStatus("plan-mode", ctx.ui.theme.fg("accent", `${PHASE_ICONS.execute} ${completed}/${todoItems.length}`));
+		} else if (phase !== "off") {
+			ctx.ui.setStatus("plan-mode", ctx.ui.theme.fg("warning", PHASE_LABELS[phase]));
 		} else {
 			ctx.ui.setStatus("plan-mode", undefined);
 		}
 
-		// Widget showing todo list
-		if (executionMode && todoItems.length > 0) {
+		// Widget for execution todos
+		if (phase === "execute" && todoItems.length > 0) {
 			const lines = todoItems.map((item) => {
 				if (item.completed) {
 					return (
@@ -73,39 +109,81 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		}
 	}
 
-	function togglePlanMode(ctx: ExtensionContext): void {
-		planModeEnabled = !planModeEnabled;
-		executionMode = false;
-		todoItems = [];
-
-		if (planModeEnabled) {
-			pi.setActiveTools(PLAN_MODE_TOOLS);
-			ctx.ui.notify(`Plan mode enabled. Tools: ${PLAN_MODE_TOOLS.join(", ")}`);
-		} else {
-			pi.setActiveTools(NORMAL_MODE_TOOLS);
-			ctx.ui.notify("Plan mode disabled. Full access restored.");
+	function setPhase(newPhase: PlanPhase, ctx: ExtensionContext): void {
+		phase = newPhase;
+		if (newPhase === "off") {
+			todoItems = [];
 		}
+		applyToolsForPhase();
 		updateStatus(ctx);
 	}
 
 	function persistState(): void {
 		pi.appendEntry("plan-mode", {
-			enabled: planModeEnabled,
+			phase,
 			todos: todoItems,
-			executing: executionMode,
 		});
 	}
 
+	// --- Commands ---
+
 	pi.registerCommand("plan", {
-		description: "Toggle plan mode (read-only exploration)",
-		handler: async (_args, ctx) => togglePlanMode(ctx),
+		description: "Start plan mode (brainstorm → spec → plan → execute) or /plan off to disable",
+		handler: async (args, ctx) => {
+			const arg = args?.trim().toLowerCase();
+
+			if (arg === "off" || (phase !== "off" && !arg)) {
+				// Toggle off
+				setPhase("off", ctx);
+				ctx.ui.notify("Plan mode disabled. Full access restored.");
+				persistState();
+				return;
+			}
+
+			if (phase === "off") {
+				// Start fresh — enter brainstorm phase
+				setPhase("brainstorm", ctx);
+				ctx.ui.notify("Plan mode: brainstorm phase. Explore the idea, ask questions one at a time.");
+				persistState();
+				return;
+			}
+
+			// Already in a phase — show current
+			ctx.ui.notify(`Currently in ${PHASE_LABELS[phase]} phase. Use /plan off to disable.`);
+		},
+	});
+
+	pi.registerCommand("phase", {
+		description: "Show or change the current plan phase",
+		handler: async (args, ctx) => {
+			const arg = args?.trim().toLowerCase();
+
+			if (!arg) {
+				if (phase === "off") {
+					ctx.ui.notify("Not in plan mode. Use /plan to start.");
+				} else {
+					ctx.ui.notify(`Current phase: ${PHASE_LABELS[phase]}\nPhases: brainstorm → spec → plan → execute`);
+				}
+				return;
+			}
+
+			// Allow jumping to a specific phase
+			if (PHASE_ORDER.includes(arg as PlanPhase)) {
+				setPhase(arg as PlanPhase, ctx);
+				ctx.ui.notify(`Switched to ${PHASE_LABELS[phase]} phase.`);
+				persistState();
+				return;
+			}
+
+			ctx.ui.notify(`Unknown phase "${arg}". Valid: brainstorm, spec, plan, execute`);
+		},
 	});
 
 	pi.registerCommand("todos", {
 		description: "Show current plan todo list",
 		handler: async (_args, ctx) => {
 			if (todoItems.length === 0) {
-				ctx.ui.notify("No todos. Create a plan first with /plan", "info");
+				ctx.ui.notify("No todos. Run through brainstorm → spec → plan first.", "info");
 				return;
 			}
 			const list = todoItems.map((item, i) => `${i + 1}. ${item.completed ? "✓" : "○"} ${item.text}`).join("\n");
@@ -115,39 +193,50 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	pi.registerShortcut(Key.ctrlAlt("p"), {
 		description: "Toggle plan mode",
-		handler: async (ctx) => togglePlanMode(ctx),
+		handler: async (ctx) => {
+			if (phase === "off") {
+				setPhase("brainstorm", ctx);
+				ctx.ui.notify("Plan mode: brainstorm phase.");
+			} else {
+				setPhase("off", ctx);
+				ctx.ui.notify("Plan mode disabled.");
+			}
+			persistState();
+		},
 	});
 
-	// Block destructive bash commands in plan mode
+	// --- Block destructive bash in read-only phases ---
+
 	pi.on("tool_call", async (event) => {
-		if (!planModeEnabled || event.toolName !== "bash") return;
+		if (!READONLY_PHASES.includes(phase) || event.toolName !== "bash") return;
 
 		const command = event.input.command as string;
 		if (!isSafeCommand(command)) {
 			return {
 				block: true,
-				reason: `Plan mode: command blocked (not allowlisted). Use /plan to disable plan mode first.\nCommand: ${command}`,
+				reason: `${PHASE_LABELS[phase]} phase: command blocked (read-only). Use /plan off or advance to execute phase.\nCommand: ${command}`,
 			};
 		}
 	});
 
-	// Filter out stale plan mode context when not in plan mode
+	// --- Filter stale plan context from messages when off ---
+
 	pi.on("context", async (event) => {
-		if (planModeEnabled) return;
+		if (phase !== "off") return;
 
 		return {
 			messages: event.messages.filter((m) => {
 				const msg = m as AgentMessage & { customType?: string };
-				if (msg.customType === "plan-mode-context") return false;
+				if (msg.customType?.startsWith("plan-")) return false;
 				if (msg.role !== "user") return true;
 
 				const content = msg.content;
 				if (typeof content === "string") {
-					return !content.includes("[PLAN MODE ACTIVE]");
+					return !content.includes("[BRAINSTORM PHASE") && !content.includes("[SPEC PHASE") && !content.includes("[PLAN PHASE") && !content.includes("[EXECUTION PHASE");
 				}
 				if (Array.isArray(content)) {
 					return !content.some(
-						(c) => c.type === "text" && (c as TextContent).text?.includes("[PLAN MODE ACTIVE]"),
+						(c) => c.type === "text" && (c as TextContent).text?.match(/\[(BRAINSTORM|SPEC|PLAN|EXECUTION) PHASE/),
 					);
 				}
 				return true;
@@ -155,58 +244,43 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		};
 	});
 
-	// Inject plan/execution context before agent starts
+	// --- Inject phase-specific context ---
+
 	pi.on("before_agent_start", async () => {
-		if (planModeEnabled) {
+		if (phase === "off") return;
+
+		const prompts: Record<string, string> = {
+			brainstorm: BRAINSTORM_PROMPT,
+			spec: SPEC_PROMPT,
+			plan: PLAN_PROMPT,
+		};
+
+		if (phase === "execute" && todoItems.length > 0) {
 			return {
 				message: {
-					customType: "plan-mode-context",
-					content: `[PLAN MODE ACTIVE]
-You are in plan mode - a read-only exploration mode for safe code analysis.
-
-Restrictions:
-- You can only use: read, bash, grep, find, ls, questionnaire
-- You CANNOT use: edit, write (file modifications are disabled)
-- Bash is restricted to an allowlist of read-only commands
-
-Ask clarifying questions using the questionnaire tool.
-Use brave-search skill via bash for web research.
-
-Create a detailed numbered plan under a "Plan:" header:
-
-Plan:
-1. First step description
-2. Second step description
-...
-
-Do NOT attempt to make changes - just describe what you would do.`,
+					customType: "plan-execution-context",
+					content: getExecutionPrompt(todoItems),
 					display: false,
 				},
 			};
 		}
 
-		if (executionMode && todoItems.length > 0) {
-			const remaining = todoItems.filter((t) => !t.completed);
-			const todoList = remaining.map((t) => `${t.step}. ${t.text}`).join("\n");
+		const prompt = prompts[phase];
+		if (prompt) {
 			return {
 				message: {
-					customType: "plan-execution-context",
-					content: `[EXECUTING PLAN - Full tool access enabled]
-
-Remaining steps:
-${todoList}
-
-Execute each step in order.
-After completing a step, include a [DONE:n] tag in your response.`,
+					customType: `plan-${phase}-context`,
+					content: prompt,
 					display: false,
 				},
 			};
 		}
 	});
 
-	// Track progress after each turn
+	// --- Track execution progress ---
+
 	pi.on("turn_end", async (event, ctx) => {
-		if (!executionMode || todoItems.length === 0) return;
+		if (phase !== "execute" || todoItems.length === 0) return;
 		if (!isAssistantMessage(event.message)) return;
 
 		const text = getTextContent(event.message);
@@ -216,81 +290,133 @@ After completing a step, include a [DONE:n] tag in your response.`,
 		persistState();
 	});
 
-	// Handle plan completion and plan mode UI
+	// --- Phase transitions after agent finishes ---
+
 	pi.on("agent_end", async (event, ctx) => {
-		// Check if execution is complete
-		if (executionMode && todoItems.length > 0) {
+		if (phase === "off" || !ctx.hasUI) return;
+
+		// Check execution completion
+		if (phase === "execute" && todoItems.length > 0) {
 			if (todoItems.every((t) => t.completed)) {
 				const completedList = todoItems.map((t) => `~~${t.text}~~`).join("\n");
 				pi.sendMessage(
 					{ customType: "plan-complete", content: `**Plan Complete!** ✓\n\n${completedList}`, display: true },
 					{ triggerTurn: false },
 				);
-				executionMode = false;
-				todoItems = [];
-				pi.setActiveTools(NORMAL_MODE_TOOLS);
-				updateStatus(ctx);
-				persistState(); // Save cleared state so resume doesn't restore old execution mode
+				setPhase("off", ctx);
+				persistState();
 			}
 			return;
 		}
 
-		if (!planModeEnabled || !ctx.hasUI) return;
-
-		// Extract todos from last assistant message
+		// Detect transition signals in the last assistant message
 		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
-		if (lastAssistant) {
-			const extracted = extractTodoItems(getTextContent(lastAssistant));
-			if (extracted.length > 0) {
-				todoItems = extracted;
+		if (!lastAssistant) return;
+		const lastText = getTextContent(lastAssistant).toLowerCase();
+
+		// Check for natural transition signals
+		let detectedNextPhase: PlanPhase | null = null;
+		for (const [signal, nextPhase] of Object.entries(TRANSITION_SIGNALS)) {
+			if (lastText.includes(signal)) {
+				detectedNextPhase = nextPhase;
+				break;
 			}
 		}
 
-		// Show plan steps and prompt for next action
-		if (todoItems.length > 0) {
-			const todoListText = todoItems.map((t, i) => `${i + 1}. ☐ ${t.text}`).join("\n");
-			pi.sendMessage(
-				{
-					customType: "plan-todo-list",
-					content: `**Plan Steps (${todoItems.length}):**\n\n${todoListText}`,
-					display: true,
-				},
-				{ triggerTurn: false },
-			);
+		// Build menu options based on current phase
+		const phaseIdx = PHASE_ORDER.indexOf(phase);
+		const nextPhase = phaseIdx < PHASE_ORDER.length - 1 ? PHASE_ORDER[phaseIdx + 1] : null;
+
+		const options: string[] = [];
+
+		if (detectedNextPhase && nextPhase === detectedNextPhase) {
+			options.push(`→ Move to ${PHASE_LABELS[detectedNextPhase]} phase`);
+		} else if (nextPhase) {
+			options.push(`→ Move to ${PHASE_LABELS[nextPhase]} phase`);
 		}
 
-		const choice = await ctx.ui.select("Plan mode - what next?", [
-			todoItems.length > 0 ? "Execute the plan (track progress)" : "Execute the plan",
-			"Stay in plan mode",
-			"Refine the plan",
-		]);
+		options.push(`↺ Continue in ${PHASE_LABELS[phase]} phase`);
+		options.push("✎ Refine (edit and resend)");
+		options.push("✗ Exit plan mode");
 
-		if (choice?.startsWith("Execute")) {
-			planModeEnabled = false;
-			executionMode = todoItems.length > 0;
-			pi.setActiveTools(NORMAL_MODE_TOOLS);
-			updateStatus(ctx);
+		const choice = await ctx.ui.select(`${PHASE_LABELS[phase]} — what next?`, options);
 
-			const execMessage =
-				todoItems.length > 0
-					? `Execute the plan. Start with: ${todoItems[0].text}`
-					: "Execute the plan you just created.";
+		if (!choice) return;
+
+		if (choice.startsWith("→ Move to")) {
+			const targetPhase = detectedNextPhase || nextPhase!;
+
+			// If moving to execute, extract todos from the plan
+			if (targetPhase === "execute") {
+				const planText = getTextContent(lastAssistant);
+				const extracted = extractTodoItems(planText);
+				if (extracted.length > 0) {
+					todoItems = extracted;
+					const todoListText = todoItems.map((t, i) => `${i + 1}. ☐ ${t.text}`).join("\n");
+					pi.sendMessage(
+						{
+							customType: "plan-todo-list",
+							content: `**Implementation Steps (${todoItems.length}):**\n\n${todoListText}`,
+							display: true,
+						},
+						{ triggerTurn: false },
+					);
+				}
+
+				setPhase("execute", ctx);
+				persistState();
+
+				const execMessage = todoItems.length > 0
+					? `Execute the approved plan. Start with step 1: ${todoItems[0].text}`
+					: "Execute the approved plan.";
+				pi.sendMessage(
+					{ customType: "plan-mode-execute", content: execMessage, display: true },
+					{ triggerTurn: true },
+				);
+				return;
+			}
+
+			// Moving to spec or plan phase
+			setPhase(targetPhase, ctx);
+			persistState();
+
+			const phaseMessages: Record<string, string> = {
+				spec: "Write the design spec based on our brainstorming discussion above.",
+				plan: "Write the detailed implementation plan based on the approved spec above.",
+			};
+			const msg = phaseMessages[targetPhase] || `Proceed with ${PHASE_LABELS[targetPhase]} phase.`;
 			pi.sendMessage(
-				{ customType: "plan-mode-execute", content: execMessage, display: true },
+				{ customType: `plan-${targetPhase}-start`, content: msg, display: true },
 				{ triggerTurn: true },
 			);
-		} else if (choice === "Refine the plan") {
-			const refinement = await ctx.ui.editor("Refine the plan:", "");
+			return;
+		}
+
+		if (choice.startsWith("↺ Continue")) {
+			// Stay in current phase, let user type their next message naturally
+			return;
+		}
+
+		if (choice.startsWith("✎ Refine")) {
+			const refinement = await ctx.ui.editor(`Refine (${PHASE_LABELS[phase]}):`, "");
 			if (refinement?.trim()) {
 				pi.sendUserMessage(refinement.trim());
 			}
+			return;
+		}
+
+		if (choice.startsWith("✗ Exit")) {
+			setPhase("off", ctx);
+			persistState();
+			ctx.ui.notify("Plan mode disabled. Full access restored.");
 		}
 	});
 
-	// Restore state on session start/resume
+	// --- Restore state on session start/resume ---
+
 	pi.on("session_start", async (_event, ctx) => {
 		if (pi.getFlag("plan") === true) {
-			planModeEnabled = true;
+			phase = "brainstorm";
 		}
 
 		const entries = ctx.sessionManager.getEntries();
@@ -298,19 +424,21 @@ After completing a step, include a [DONE:n] tag in your response.`,
 		// Restore persisted state
 		const planModeEntry = entries
 			.filter((e: { type: string; customType?: string }) => e.type === "custom" && e.customType === "plan-mode")
-			.pop() as { data?: { enabled: boolean; todos?: TodoItem[]; executing?: boolean } } | undefined;
+			.pop() as { data?: { phase?: PlanPhase; todos?: TodoItem[]; enabled?: boolean; executing?: boolean } } | undefined;
 
 		if (planModeEntry?.data) {
-			planModeEnabled = planModeEntry.data.enabled ?? planModeEnabled;
+			// Support legacy format (enabled/executing) for backwards compat
+			if (planModeEntry.data.phase) {
+				phase = planModeEntry.data.phase;
+			} else if (planModeEntry.data.enabled) {
+				phase = planModeEntry.data.executing ? "execute" : "brainstorm";
+			}
 			todoItems = planModeEntry.data.todos ?? todoItems;
-			executionMode = planModeEntry.data.executing ?? executionMode;
 		}
 
 		// On resume: re-scan messages to rebuild completion state
-		// Only scan messages AFTER the last "plan-mode-execute" to avoid picking up [DONE:n] from previous plans
 		const isResume = planModeEntry !== undefined;
-		if (isResume && executionMode && todoItems.length > 0) {
-			// Find the index of the last plan-mode-execute entry (marks when current execution started)
+		if (isResume && phase === "execute" && todoItems.length > 0) {
 			let executeIndex = -1;
 			for (let i = entries.length - 1; i >= 0; i--) {
 				const entry = entries[i] as { type: string; customType?: string };
@@ -320,7 +448,6 @@ After completing a step, include a [DONE:n] tag in your response.`,
 				}
 			}
 
-			// Only scan messages after the execute marker
 			const messages: AssistantMessage[] = [];
 			for (let i = executeIndex + 1; i < entries.length; i++) {
 				const entry = entries[i];
@@ -332,9 +459,7 @@ After completing a step, include a [DONE:n] tag in your response.`,
 			markCompletedSteps(allText, todoItems);
 		}
 
-		if (planModeEnabled) {
-			pi.setActiveTools(PLAN_MODE_TOOLS);
-		}
+		applyToolsForPhase();
 		updateStatus(ctx);
 	});
 }
