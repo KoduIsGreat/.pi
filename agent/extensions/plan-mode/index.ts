@@ -306,6 +306,16 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				);
 				setPhase("off", ctx);
 				persistState();
+
+				// Run simplify pass on all changed files
+				pi.sendMessage(
+					{
+						customType: "plan-simplify",
+						content: "Plan execution complete. Now run a simplify pass on all files that were changed during execution — review for clarity, consistency, and maintainability while preserving functionality. Use `git diff --name-only` to find changed files.",
+						display: true,
+					},
+					{ triggerTurn: true },
+				);
 			}
 			return;
 		}
