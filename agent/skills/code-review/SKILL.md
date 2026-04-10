@@ -36,7 +36,18 @@ git diff main..HEAD
 
 ### 1. Gather Context
 
-Before reviewing, understand what changed and why:
+Before reviewing code, establish what the changes are supposed to achieve. Work from the most specific source available:
+
+**Check for specs and plans:**
+- Look for spec/design docs referenced in the conversation or in `docs/specs/`, `docs/plans/`, or similar project directories
+- If a plan-mode workflow was used, the brainstorm → spec → plan conversation is your primary reference for intent
+- Check recent commit messages for references to specs, plans, or issue numbers
+
+**Check for other context:**
+- PR description, issue/ticket, or task description from the conversation
+- If dispatched as a subagent, the task description is your context — use it
+
+**If no spec/plan exists**, infer intent from commit messages and the diff itself, but note this in your review.
 
 ```bash
 # What files changed
@@ -47,9 +58,26 @@ git diff <base>..<head>
 
 # Recent commit messages for intent
 git log --oneline <base>..<head>
+
+# Look for specs/plans in the project
+find . -path '*/docs/*' -name '*spec*' -o -name '*plan*' -o -name '*design*' 2>/dev/null | head -20
 ```
 
-### 2. Review Checklist
+### 2. Spec & Plan Compliance
+
+If a spec or plan exists, this is the **first and most important** check. Before looking at code quality, verify the implementation achieves what was planned.
+
+- **Coverage** — Does every requirement in the spec have a corresponding implementation? List any gaps.
+- **Faithfulness** — Does the implementation match the spec's design decisions (architecture, interfaces, error handling)? Flag any deviations.
+- **Scope** — Is there work that goes beyond the spec (scope creep)? Is there work missing?
+- **Testing** — Does the testing match the spec's testing strategy?
+
+If the implementation deviates from the spec, categorize it:
+- **Intentional improvement** — the code is better than what the spec described. Note it but don't flag as an issue.
+- **Drift** — the code doesn't match the spec and it's unclear if this was intentional. Flag as Important.
+- **Missing** — a spec requirement isn't implemented at all. Flag as Critical.
+
+### 3. Review Checklist
 
 **Correctness:**
 - Does the code do what it's supposed to?
@@ -80,7 +108,7 @@ git log --oneline <base>..<head>
 - DRY without over-abstracting?
 - YAGNI — nothing built that isn't needed?
 
-### 3. Categorize Findings
+### 4. Categorize Findings
 
 **Critical (must fix)** — Bugs, security issues, data loss risks, broken functionality.
 
@@ -94,13 +122,20 @@ For each finding:
 - **Why** — why it matters
 - **Fix** — how to fix (if not obvious)
 
-### 4. Output Format
+### 5. Output Format
 
 ```markdown
 ## Code Review
 
 ### Scope
 Files reviewed, git range, what was implemented.
+Spec/plan referenced (if any).
+
+### Spec Compliance
+(Include this section when a spec or plan exists)
+- **Coverage:** All requirements met? List any gaps.
+- **Deviations:** Any drift from the spec? Intentional improvements noted.
+- **Scope:** Any scope creep or missing work?
 
 ### Strengths
 What's done well. Be specific — file and line references.
@@ -118,6 +153,8 @@ What's done well. Be specific — file and line references.
 
 ### Verdict
 **Ready to merge?** Yes / No / With fixes
+
+**Spec compliance:** Full / Partial / No spec found
 
 [1-2 sentence reasoning]
 ```
