@@ -2,5 +2,11 @@
   "lastChangelogVersion": "0.66.1",
   "defaultProvider": "anthropic",
   "defaultModel": "claude-opus-4-6",
-  "defaultThinkingLevel": "medium"
+  "defaultThinkingLevel": "medium",
+  "enabledModels": [
+    "anthropic/claude-opus-4-6",
+    "anthropic/claude-sonnet-4-6",
+    "anthropic/claude-sonnet-4-5-20250929",
+    "anthropic/claude-haiku-4-5-20251001"
+  ]
 }
