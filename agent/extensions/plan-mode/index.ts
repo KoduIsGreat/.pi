@@ -6,6 +6,9 @@
  *   2. Spec — write a design document from the brainstorm
  *   3. Plan — write a detailed implementation plan from the spec
  *   4. Execute — implement with progress tracking
+ *   5. Simplify — cleanup pass on changed files
+ *   6. Review — code review against spec/plan, apply fixes
+ *   7. Simplify — final cleanup if review made changes
  *
  * Features:
  * - /plan to start (enters brainstorm phase)
@@ -22,7 +25,7 @@ import type { AgentMessage } from "@mariozechner/pi-agent-core";
 import type { AssistantMessage, TextContent } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key } from "@mariozechner/pi-tui";
-import { BRAINSTORM_PROMPT, getExecutionPrompt, PLAN_PROMPT, SPEC_PROMPT } from "./prompts.js";
+import { BRAINSTORM_PROMPT, getExecutionPrompt, PLAN_PROMPT, REVIEW_PROMPT, SIMPLIFY_PROMPT, SPEC_PROMPT } from "./prompts.js";
 import {
 	extractTodoItems,
 	isSafeCommand,
@@ -39,7 +42,7 @@ const SPEC_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire", "writ
 const FULL_TOOLS = ["read", "bash", "edit", "write"];
 
 // Phase transitions
-const PHASE_ORDER: PlanPhase[] = ["brainstorm", "spec", "plan", "execute"];
+const PHASE_ORDER: PlanPhase[] = ["brainstorm", "spec", "plan", "execute", "simplify", "review"];
 const READONLY_PHASES: PlanPhase[] = ["brainstorm"];
 
 // Transition signals the agent includes in its response
@@ -49,6 +52,10 @@ const TRANSITION_SIGNALS: Record<string, PlanPhase> = {
 	"ready to write the implementation plan": "plan",
 	"plan approved. ready to execute": "execute",
 	"ready to execute": "execute",
+	"simplify complete. ready for review": "review",
+	"simplify complete": "review",
+	"review complete. changes were made": "simplify",
+	"review complete. no changes needed": "off",
 };
 
 function isAssistantMessage(m: AgentMessage): m is AssistantMessage {
@@ -65,6 +72,7 @@ function getTextContent(message: AssistantMessage): string {
 export default function planModeExtension(pi: ExtensionAPI): void {
 	let phase: PlanPhase = "off";
 	let todoItems: TodoItem[] = [];
+	let postReviewSimplify = false; // true when simplify is running after review fixes
 
 	pi.registerFlag("plan", {
 		description: "Start in plan mode (brainstorm phase)",
@@ -75,7 +83,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	// --- UI Helpers ---
 
 	function applyToolsForPhase(): void {
-		if (phase === "off" || phase === "execute") {
+		if (phase === "off" || phase === "execute" || phase === "simplify" || phase === "review") {
 			pi.setActiveTools(FULL_TOOLS);
 		} else if (phase === "spec" || phase === "plan") {
 			pi.setActiveTools(SPEC_TOOLS);
@@ -123,13 +131,14 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		pi.appendEntry("plan-mode", {
 			phase,
 			todos: todoItems,
+			postReviewSimplify,
 		});
 	}
 
 	// --- Commands ---
 
 	pi.registerCommand("plan", {
-		description: "Start plan mode (brainstorm → spec → plan → execute) or /plan off to disable",
+		description: "Start plan mode (brainstorm → spec → plan → execute → simplify → review) or /plan off to disable",
 		handler: async (args, ctx) => {
 			const arg = args?.trim().toLowerCase();
 
@@ -163,7 +172,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				if (phase === "off") {
 					ctx.ui.notify("Not in plan mode. Use /plan to start.");
 				} else {
-					ctx.ui.notify(`Current phase: ${PHASE_LABELS[phase]}\nPhases: brainstorm → spec → plan → execute`);
+					ctx.ui.notify(`Current phase: ${PHASE_LABELS[phase]}\nPhases: brainstorm → spec → plan → execute → simplify → review`);
 				}
 				return;
 			}
@@ -233,11 +242,11 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 				const content = msg.content;
 				if (typeof content === "string") {
-					return !content.includes("[BRAINSTORM PHASE") && !content.includes("[SPEC PHASE") && !content.includes("[PLAN PHASE") && !content.includes("[EXECUTION PHASE");
+					return !content.match(/\[(BRAINSTORM|SPEC|PLAN|EXECUTION|SIMPLIFY|REVIEW) PHASE/);
 				}
 				if (Array.isArray(content)) {
 					return !content.some(
-						(c) => c.type === "text" && (c as TextContent).text?.match(/\[(BRAINSTORM|SPEC|PLAN|EXECUTION) PHASE/),
+						(c) => c.type === "text" && (c as TextContent).text?.match(/\[(BRAINSTORM|SPEC|PLAN|EXECUTION|SIMPLIFY|REVIEW) PHASE/),
 					);
 				}
 				return true;
@@ -254,6 +263,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			brainstorm: BRAINSTORM_PROMPT,
 			spec: SPEC_PROMPT,
 			plan: PLAN_PROMPT,
+			simplify: SIMPLIFY_PROMPT,
+			review: REVIEW_PROMPT,
 		};
 
 		if (phase === "execute" && todoItems.length > 0) {
@@ -296,7 +307,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 	pi.on("agent_end", async (event, ctx) => {
 		if (phase === "off" || !ctx.hasUI) return;
 
-		// Check execution completion
+		// Check execution completion → auto-transition to simplify
 		if (phase === "execute" && todoItems.length > 0) {
 			if (todoItems.every((t) => t.completed)) {
 				const completedList = todoItems.map((t) => `~~${t.text}~~`).join("\n");
@@ -304,20 +315,93 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 					{ customType: "plan-complete", content: `**Plan Complete!** ✓\n\n${completedList}`, display: true },
 					{ triggerTurn: false },
 				);
-				setPhase("off", ctx);
+
+				// Auto-transition to simplify phase
+				setPhase("simplify", ctx);
 				persistState();
 
-				// Run simplify pass on all changed files
 				pi.sendMessage(
 					{
-						customType: "plan-simplify",
-						content: "Plan execution complete. Now run a simplify pass on all files that were changed during execution — review for clarity, consistency, and maintainability while preserving functionality. Use `git diff --name-only` to find changed files.",
+						customType: "plan-simplify-start",
+						content: "Plan execution complete. Running simplify pass on all changed files.",
 						display: true,
 					},
 					{ triggerTurn: true },
 				);
 			}
 			return;
+		}
+
+		// Auto-transitions for simplify and review phases
+		if (phase === "simplify" || phase === "review") {
+			const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+			if (!lastAssistant) return;
+			const lastText = getTextContent(lastAssistant).toLowerCase();
+
+			if (phase === "simplify") {
+				if (postReviewSimplify) {
+					// Post-review simplify done → workflow complete
+					postReviewSimplify = false;
+					pi.sendMessage(
+						{
+							customType: "plan-workflow-complete",
+							content: "**Workflow Complete!** ✨ Brainstorm → Spec → Plan → Execute → Simplify → Review → Simplify — all done.",
+							display: true,
+						},
+						{ triggerTurn: false },
+					);
+					setPhase("off", ctx);
+					persistState();
+				} else {
+					// First simplify done → auto-transition to review
+					setPhase("review", ctx);
+					persistState();
+
+					pi.sendMessage(
+						{
+							customType: "plan-review-start",
+							content: "Simplify complete. Running code review against spec and plan.",
+							display: true,
+						},
+						{ triggerTurn: true },
+					);
+				}
+				return;
+			}
+
+			if (phase === "review") {
+				// Check if review made changes
+				const madeChanges = lastText.includes("changes were made");
+
+				if (madeChanges) {
+					// Review made fixes → run another simplify pass
+					postReviewSimplify = true;
+					setPhase("simplify", ctx);
+					persistState();
+
+					pi.sendMessage(
+						{
+							customType: "plan-simplify-post-review",
+							content: "Review applied fixes. Running final simplify pass on changed files.",
+							display: true,
+						},
+						{ triggerTurn: true },
+					);
+				} else {
+					// No changes from review → done!
+					pi.sendMessage(
+						{
+							customType: "plan-workflow-complete",
+							content: "**Workflow Complete!** ✨ Brainstorm → Spec → Plan → Execute → Simplify → Review — all done.",
+							display: true,
+						},
+						{ triggerTurn: false },
+					);
+					setPhase("off", ctx);
+					persistState();
+				}
+				return;
+			}
 		}
 
 		// Detect transition signals in the last assistant message
@@ -438,7 +522,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		// Restore persisted state
 		const planModeEntry = entries
 			.filter((e: { type: string; customType?: string }) => e.type === "custom" && e.customType === "plan-mode")
-			.pop() as { data?: { phase?: PlanPhase; todos?: TodoItem[]; enabled?: boolean; executing?: boolean } } | undefined;
+			.pop() as { data?: { phase?: PlanPhase; todos?: TodoItem[]; postReviewSimplify?: boolean; enabled?: boolean; executing?: boolean } } | undefined;
 
 		if (planModeEntry?.data) {
 			// Support legacy format (enabled/executing) for backwards compat
@@ -448,6 +532,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 				phase = planModeEntry.data.executing ? "execute" : "brainstorm";
 			}
 			todoItems = planModeEntry.data.todos ?? todoItems;
+			postReviewSimplify = planModeEntry.data.postReviewSimplify ?? false;
 		}
 
 		// On resume: re-scan messages to rebuild completion state

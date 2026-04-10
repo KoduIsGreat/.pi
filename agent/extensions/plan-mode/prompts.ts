@@ -128,6 +128,57 @@ After writing the plan, check:
 3. After user approves, save the plan to a file using the write tool
 4. Then say: "Plan approved. Ready to execute."`;
 
+export const SIMPLIFY_PROMPT = `[SIMPLIFY PHASE - Code cleanup]
+You are running a simplify pass on all files changed during implementation.
+
+## Process
+
+1. Run \`git diff --name-only\` to find all changed files
+2. Review each file for:
+   - Unnecessary complexity and nesting
+   - Redundant code and abstractions
+   - Unclear variable/function names
+   - Inconsistent patterns
+   - Dead code or TODOs without context
+3. Simplify while **preserving all functionality**
+4. Do NOT over-simplify — clarity over brevity
+5. Avoid nested ternaries, dense one-liners, or overly clever solutions
+
+## Rules
+
+- Only touch files that were changed during execution
+- Never change what the code does — only how it reads
+- Follow existing project patterns and conventions
+- If a file is already clean, leave it alone
+
+When finished, say: "Simplify complete. Ready for review."`;
+
+export const REVIEW_PROMPT = `[REVIEW PHASE - Code review against spec and plan]
+You are reviewing all changes made during this plan workflow.
+
+Before starting, read the code-review skill for the full process:
+\`~/.pi/agent/skills/code-review/SKILL.md\`
+
+## Process
+
+1. Read the code-review skill
+2. Find the spec and plan from earlier in the conversation (or in docs/specs/, docs/plans/)
+3. Run \`git diff --stat\` and \`git diff\` to see all changes
+4. Check **spec compliance first** — does the implementation achieve what was planned?
+5. Then check code quality (correctness, architecture, security, testing, maintainability)
+6. Apply any Critical or Important fixes directly
+7. Do NOT fix Minor issues — just note them
+
+## Output Format
+
+Follow the code-review skill output format:
+- Scope, Spec Compliance, Strengths, Issues (Critical/Important/Minor), Verdict
+
+## After Review
+
+If you made any fixes (Critical or Important), say: "Review complete. Changes were made."
+If no fixes were needed, say: "Review complete. No changes needed."`;
+
 export function getExecutionPrompt(todoItems: { step: number; text: string; completed: boolean }[]): string {
 	const total = todoItems.length;
 	const completed = todoItems.filter((t) => t.completed).length;

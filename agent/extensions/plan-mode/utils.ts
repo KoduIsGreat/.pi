@@ -112,9 +112,11 @@ export interface TodoItem {
  * - spec: Write a design/spec document from the brainstorm (read-only, writes spec)
  * - plan: Write a detailed implementation plan from the spec (read-only, writes plan)
  * - execute: Implement the plan with progress tracking (full access)
+ * - simplify: Simplify pass on changed files (full access)
+ * - review: Code review against spec/plan (full access)
  * - off: Plan mode disabled
  */
-export type PlanPhase = "off" | "brainstorm" | "spec" | "plan" | "execute";
+export type PlanPhase = "off" | "brainstorm" | "spec" | "plan" | "execute" | "simplify" | "review";
 
 export const PHASE_LABELS: Record<PlanPhase, string> = {
 	off: "",
@@ -122,6 +124,8 @@ export const PHASE_LABELS: Record<PlanPhase, string> = {
 	spec: "📐 spec",
 	plan: "📋 plan",
 	execute: "🚀 execute",
+	simplify: "✨ simplify",
+	review: "🔍 review",
 };
 
 export const PHASE_ICONS: Record<PlanPhase, string> = {
@@ -130,6 +134,8 @@ export const PHASE_ICONS: Record<PlanPhase, string> = {
 	spec: "📐",
 	plan: "📋",
 	execute: "🚀",
+	simplify: "✨",
+	review: "🔍",
 };
 
 export function cleanStepText(text: string): string {
