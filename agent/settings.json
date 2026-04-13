@@ -1,12 +1,35 @@
 {
   "lastChangelogVersion": "0.66.1",
-  "defaultProvider": "anthropic",
+  "defaultProvider": "anthropic-azure",
   "defaultModel": "claude-opus-4-6",
   "defaultThinkingLevel": "medium",
   "enabledModels": [
     "anthropic/claude-opus-4-6",
     "anthropic/claude-sonnet-4-6",
     "anthropic/claude-sonnet-4-5-20250929",
-    "anthropic/claude-haiku-4-5-20251001"
+    "anthropic/claude-haiku-4-5-20251001",
+    "anthropic-azure/claude-opus-4-6",
+    "openai-azure/gpt-4o",
+    "openai-azure/gpt-4o-mini",
+    "openai-azure/gpt-4.1-mini",
+    "openai-azure/gpt-5-mini",
+    "openai-azure/gpt-5.3-codex",
+    "openai-azure/gpt-5.4",
+    "openai-azure/o3"
+  ],
+  "packages": [
+    "git:github.com/badlogic/pi-skills"
+  ],
+  "skills": [
+    "git/github.com/badlogic/pi-skills/browser-tools",
+    "git/github.com/badlogic/pi-skills/brave-search",
+    "git/github.com/badlogic/pi-skills/transcribe",
+    "git/github.com/badlogic/pi-skills/youtube-transcript",
+    "git/github.com/badlogic/pi-skills/gccli",
+    "git/github.com/badlogic/pi-skills/gdcli",
+    "git/github.com/badlogic/pi-skills/gmcli"
+  ],
+  "extensions": [
+    "-extensions/git-checkpoint.ts"
   ]
 }
