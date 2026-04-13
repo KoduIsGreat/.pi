@@ -53,7 +53,7 @@ The agent writes a design document covering:
 - Self-reviews for placeholders, contradictions, ambiguity
 
 Saves the spec to disk (e.g. `docs/specs/<topic>-design.md`).
-You review and request changes until satisfied → advance.
+A review menu automatically appears — approve and advance, refine, or continue discussing.
 
 ### 3. Plan Phase 📋
 
@@ -64,7 +64,7 @@ The agent writes a concrete implementation plan:
 - No placeholders or vague steps
 
 Saves the plan to disk (e.g. `docs/plans/<topic>-plan.md`).
-You review → advance.
+A review menu automatically appears — approve and advance, refine, or continue discussing.
 
 ### 4. Execute Phase 🚀
 

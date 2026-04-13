@@ -75,10 +75,11 @@ Fix issues inline, then present the spec for user review.
 
 ## Process
 
-1. First present the complete spec in chat for the user to review
-2. Ask: "Does this spec look right? Any changes before we move to the implementation plan?"
-3. After user approves, save the spec to a file using the write tool
-4. Then say: "Spec approved. Ready to write the implementation plan."`;
+1. Write the complete spec
+2. Save it to disk using the write tool (e.g. docs/specs/<topic>-design.md)
+3. Say: "Ready to write the implementation plan."
+
+A review menu will automatically appear for the user to approve, refine, or continue discussing. Do NOT wait for explicit user approval before saying the transition phrase — the menu handles the approval gate.`;
 
 export const PLAN_PROMPT = `[PLAN PHASE - Writing the implementation plan]
 You have an approved spec. Now write a detailed, step-by-step implementation plan that a developer could follow without any other context.
@@ -123,10 +124,11 @@ After writing the plan, check:
 
 ## Process
 
-1. Present the complete plan in chat under a "Plan:" header for the user to review
-2. Ask: "Ready to execute this plan?"
-3. After user approves, save the plan to a file using the write tool
-4. Then say: "Plan approved. Ready to execute."`;
+1. Present the complete plan in chat under a "Plan:" header
+2. Save it to disk using the write tool (e.g. docs/plans/<topic>-plan.md)
+3. Say: "Ready to execute."
+
+A review menu will automatically appear for the user to approve, refine, or continue discussing. Do NOT wait for explicit user approval before saying the transition phrase — the menu handles the approval gate.`;
 
 export const SIMPLIFY_PROMPT = `[SIMPLIFY PHASE - Code cleanup]
 You are running a simplify pass on all files changed during implementation.
@@ -197,5 +199,15 @@ Progress: ${completed}/${total} steps completed.${nextStep ? ` Continue from ste
 - Execute steps in order. Do NOT skip steps.
 - After completing each step, include a [DONE:n] tag (e.g. [DONE:1], [DONE:2]).
 - If you hit a blocker or something doesn't match the plan, STOP and ask — do not guess.
-- Each [DONE:n] should appear only once per step completion.`;
+- Each [DONE:n] should appear only once per step completion.
+- When ALL steps are complete, say: "All steps complete."
+
+## What Happens Next
+
+After execution completes, the workflow automatically runs:
+5. **Simplify** — cleanup pass on all changed files
+6. **Review** — code review against spec and plan, applying Critical/Important fixes
+7. **Final Simplify** — if review made changes
+
+You do NOT need to trigger these — they run automatically.`;
 }

@@ -52,6 +52,8 @@ const TRANSITION_SIGNALS: Record<string, PlanPhase> = {
 	"ready to write the implementation plan": "plan",
 	"plan approved. ready to execute": "execute",
 	"ready to execute": "execute",
+	"all steps complete": "simplify",
+	"execution complete": "simplify",
 	"simplify complete. ready for review": "review",
 	"simplify complete": "review",
 	"review complete. changes were made": "simplify",
@@ -308,13 +310,27 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 		if (phase === "off" || !ctx.hasUI) return;
 
 		// Check execution completion → auto-transition to simplify
-		if (phase === "execute" && todoItems.length > 0) {
-			if (todoItems.every((t) => t.completed)) {
-				const completedList = todoItems.map((t) => `~~${t.text}~~`).join("\n");
-				pi.sendMessage(
-					{ customType: "plan-complete", content: `**Plan Complete!** ✓\n\n${completedList}`, display: true },
-					{ triggerTurn: false },
-				);
+		if (phase === "execute") {
+			const allTodosComplete = todoItems.length > 0 && todoItems.every((t) => t.completed);
+
+			// Also detect completion via text signal when todos aren't tracked
+			let textSignalComplete = false;
+			if (!allTodosComplete) {
+				const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+				if (lastAssistant) {
+					const lastText = getTextContent(lastAssistant).toLowerCase();
+					textSignalComplete = lastText.includes("all steps complete") || lastText.includes("execution complete");
+				}
+			}
+
+			if (allTodosComplete || textSignalComplete) {
+				if (todoItems.length > 0) {
+					const completedList = todoItems.map((t) => `~~${t.text}~~`).join("\n");
+					pi.sendMessage(
+						{ customType: "plan-complete", content: `**Plan Complete!** ✓\n\n${completedList}`, display: true },
+						{ triggerTurn: false },
+					);
+				}
 
 				// Auto-transition to simplify phase
 				setPhase("simplify", ctx);
@@ -418,21 +434,20 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			}
 		}
 
-		// Only show the transition menu when the agent signals readiness.
-		// During brainstorm, the agent asks questions back-and-forth — don't
-		// interrupt with a menu on every turn. The user can always use /phase
-		// or /plan off to change things manually.
-		if (!detectedNextPhase) return;
+		// For spec and plan phases, always show the review menu after the agent
+		// finishes a turn — the agent just wrote a document and the user needs
+		// to approve, refine, or continue. For brainstorm, only show menu when
+		// a transition signal is detected (to avoid interrupting Q&A flow).
+		if (!detectedNextPhase && phase !== "spec" && phase !== "plan") return;
 
 		const phaseIdx = PHASE_ORDER.indexOf(phase);
 		const nextPhase = phaseIdx < PHASE_ORDER.length - 1 ? PHASE_ORDER[phaseIdx + 1] : null;
 
 		const options: string[] = [];
 
-		if (nextPhase && detectedNextPhase === nextPhase) {
-			options.push(`→ Move to ${PHASE_LABELS[detectedNextPhase]} phase`);
-		} else if (nextPhase) {
-			options.push(`→ Move to ${PHASE_LABELS[nextPhase]} phase`);
+		if (nextPhase) {
+			const targetLabel = detectedNextPhase ? PHASE_LABELS[detectedNextPhase] : PHASE_LABELS[nextPhase];
+			options.push(`→ Move to ${targetLabel} phase`);
 		}
 
 		options.push(`↺ Continue in ${PHASE_LABELS[phase]} phase`);
