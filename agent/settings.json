@@ -15,7 +15,13 @@
     "openai-azure/gpt-5-mini",
     "openai-azure/gpt-5.3-codex",
     "openai-azure/gpt-5.4",
-    "openai-azure/o3"
+    "openai-azure/o3",
+    "ollama/qwen2.5-coder:14b-32k",
+    "ollama/qwen2.5:14b-32k",
+    "ollama/llama3.1:8b-32k",
+    "ollama/qwen2.5-coder:7b-32k",
+    "mlx-coder/mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
+    "mlx-chat/mlx-community/Qwen2.5-14B-Instruct-4bit"
   ],
   "packages": [
     "git:github.com/badlogic/pi-skills"
