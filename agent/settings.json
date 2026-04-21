@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.67.68",
-  "defaultProvider": "anthropic-azure",
-  "defaultModel": "claude-opus-4-6",
+  "lastChangelogVersion": "0.68.0",
+  "defaultProvider": "azure-build-team-anthropic",
+  "defaultModel": "claude-opus-4-6-2",
   "defaultThinkingLevel": "medium",
   "enabledModels": [
     "anthropic/claude-opus-4-7",
@@ -21,7 +21,11 @@
     "ollama/llama3.1:8b-32k",
     "ollama/qwen2.5-coder:7b-32k",
     "mlx-coder/mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
-    "mlx-chat/mlx-community/Qwen2.5-14B-Instruct-4bit"
+    "mlx-chat/mlx-community/Qwen2.5-14B-Instruct-4bit",
+    "azure-build-team-anthropic/claude-opus-4-7",
+    "azure-build-team-anthropic/claude-opus-4-6-2",
+    "azure-build-team-anthropic/claude-sonnet-4-6",
+    "azure-build-team-openai/gpt-5.4"
   ],
   "packages": [
     "git:github.com/badlogic/pi-skills"
