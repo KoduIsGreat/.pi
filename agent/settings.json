@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "0.67.4",
+  "lastChangelogVersion": "0.67.68",
   "defaultProvider": "anthropic-azure",
   "defaultModel": "claude-opus-4-6",
   "defaultThinkingLevel": "medium",
@@ -31,6 +31,6 @@
   ],
   "extensions": [
     "-extensions/git-checkpoint.ts"
-  ]
+  ],
+  "hideThinkingBlock": false
 }
-

@@ -1,0 +1,33 @@
+{
+  "// Cursor movement — avoid ctrl+a (tmux prefix)": "",
+  "tui.editor.cursorLineStart": ["home"],
+  "tui.editor.cursorLineEnd": ["end", "ctrl+e"],
+
+  "// Deletion — avoid ctrl+k (tmux pane up)": "",
+  "tui.editor.deleteToLineEnd": ["alt+k"],
+  "tui.editor.deleteWordBackward": ["ctrl+w", "alt+backspace"],
+  "tui.editor.deleteCharForward": ["delete", "ctrl+d"],
+
+  "// Model — avoid ctrl+l (tmux pane right)": "",
+  "app.model.select": ["alt+m"],
+  "app.model.cycleForward": ["alt+p"],
+  "app.model.cycleBackward": ["shift+alt+p"],
+
+  "// Sessions": "",
+  "app.session.new": ["alt+n"],
+  "app.session.resume": ["alt+r"],
+  "app.session.tree": ["alt+t"],
+  "app.session.fork": ["alt+f"],
+
+  "// Everything else — safe defaults, no tmux conflicts": "",
+  "app.interrupt": ["escape"],
+  "app.clear": ["ctrl+c"],
+  "app.exit": ["ctrl+d"],
+  "app.suspend": ["ctrl+z"],
+  "app.editor.external": ["ctrl+g"],
+  "app.tools.expand": ["ctrl+o"],
+  "app.thinking.cycle": ["shift+tab"],
+  "app.thinking.toggle": ["ctrl+t"],
+  "app.message.followUp": ["alt+enter"],
+  "app.message.dequeue": ["alt+up"]
+}
