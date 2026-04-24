@@ -86,7 +86,8 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 
 	function applyToolsForPhase(): void {
 		if (phase === "off" || phase === "execute" || phase === "simplify" || phase === "review") {
-			pi.setActiveTools(FULL_TOOLS);
+			// Full access — use all registered tools so extension-provided tools (e.g. subagent) pass through.
+			pi.setActiveTools(pi.getAllTools().map((t: { name: string }) => t.name));
 		} else if (phase === "spec" || phase === "plan") {
 			pi.setActiveTools(SPEC_TOOLS);
 		} else {
