@@ -1,31 +1,10 @@
 {
-  "lastChangelogVersion": "0.70.2",
-  "defaultProvider": "azure-build-team-anthropic",
-  "defaultModel": "claude-opus-4-7",
+  "lastChangelogVersion": "0.74.0",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "medium",
   "enabledModels": [
-    "anthropic/claude-opus-4-7",
-    "anthropic/claude-sonnet-4-6",
-    "anthropic/claude-sonnet-4-5-20250929",
-    "anthropic/claude-haiku-4-5-20251001",
-    "anthropic-azure/claude-opus-4-6",
-    "openai-azure/gpt-4o",
-    "openai-azure/gpt-4o-mini",
-    "openai-azure/gpt-4.1-mini",
-    "openai-azure/gpt-5-mini",
-    "openai-azure/gpt-5.3-codex",
-    "openai-azure/gpt-5.4",
-    "openai-azure/o3",
-    "ollama/qwen2.5-coder:14b-32k",
-    "ollama/qwen2.5:14b-32k",
-    "ollama/llama3.1:8b-32k",
-    "ollama/qwen2.5-coder:7b-32k",
-    "mlx-coder/mlx-community/Qwen2.5-Coder-14B-Instruct-4bit",
-    "mlx-chat/mlx-community/Qwen2.5-14B-Instruct-4bit",
-    "azure-build-team-anthropic/claude-opus-4-7",
-    "azure-build-team-anthropic/claude-opus-4-6-2",
-    "azure-build-team-anthropic/claude-sonnet-4-6",
-    "azure-build-team-openai/gpt-5.4"
+    "openai-codex/gpt-5.5"
   ],
   "packages": [
     "git:github.com/badlogic/pi-skills"
@@ -40,7 +19,11 @@
     "git/github.com/badlogic/pi-skills/gmcli"
   ],
   "extensions": [
-    "-extensions/git-checkpoint.ts"
+    "-extensions/git-checkpoint.ts",
+    "-extensions/azure-anthropic.ts",
+    "-extensions/azure-build-team-anthropic.ts",
+    "-extensions/azure-build-team-openai.ts",
+    "-extensions/azure-openai.ts"
   ],
   "hideThinkingBlock": false
 }

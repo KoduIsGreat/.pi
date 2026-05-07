@@ -1,0 +1,11 @@
+{
+  "name": "puppeteer-perf",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "puppeteer": "^24.15.0"
+  },
+  "pi": {
+    "extensions": ["./index.ts"]
+  }
+}

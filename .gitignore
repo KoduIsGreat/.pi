@@ -1,3 +1,4 @@
 sessions/
 bin/
 auth.json
+node_modules/
